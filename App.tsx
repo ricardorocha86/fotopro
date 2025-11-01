@@ -1,7 +1,8 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { generateProfessionalPhotos } from './services/geminiService';
 import { fileToDataUrl } from './utils/imageUtils';
 import { AppState, GeneratedPhoto } from './types';
+import { PROFESSIONAL_PROMPTS } from './constants';
 
 // --- Helper Icons ---
 const UploadIcon: React.FC<{ className?: string }> = ({ className }) => (
@@ -22,6 +23,13 @@ const SparklesIcon: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+interface GenerationProgress {
+  id: number;
+  title: string;
+  status: 'pending' | 'done' | 'error';
+  time?: number;
+}
+
 // --- Main App Component ---
 export default function App() {
     const [appState, setAppState] = useState<AppState>(AppState.UPLOAD);
@@ -29,14 +37,50 @@ export default function App() {
     const [generatedPhotos, setGeneratedPhotos] = useState<GeneratedPhoto[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [revealedPhotos, setRevealedPhotos] = useState<Set<number>>(new Set());
+    const [generationProgress, setGenerationProgress] = useState<GenerationProgress[]>([]);
+    const generationStartTimes = useRef<Map<number, number>>(new Map());
     
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        let interval: number | undefined;
+
+        if (appState === AppState.GENERATING) {
+            interval = window.setInterval(() => {
+                const now = performance.now();
+                setGenerationProgress(currentProgress => {
+                    if (!currentProgress.some(p => p.status === 'pending')) {
+                        clearInterval(interval);
+                        return currentProgress;
+                    }
+
+                    return currentProgress.map(p => {
+                        if (p.status === 'pending') {
+                            const startTime = generationStartTimes.current.get(p.id) || now;
+                            const duration = (now - startTime) / 1000;
+                            return { ...p, time: duration };
+                        }
+                        return p;
+                    });
+                });
+            }, 100); 
+        }
+
+        return () => {
+            if (interval) {
+                clearInterval(interval);
+            }
+        };
+    }, [appState]);
 
     const resetApp = () => {
         setAppState(AppState.UPLOAD);
         setOriginalPhoto(null);
         setGeneratedPhotos([]);
         setError(null);
+        setRevealedPhotos(new Set());
+        setGenerationProgress([]);
     };
 
     const handleFileSelect = useCallback(async (file: File | null) => {
@@ -61,18 +105,54 @@ export default function App() {
         }
 
         setError(null);
+        
+        const now = performance.now();
+        generationStartTimes.current.clear();
+        const initialProgress = PROFESSIONAL_PROMPTS.map(p => {
+            generationStartTimes.current.set(p.id, now);
+            return {
+                id: p.id,
+                title: p.title,
+                status: 'pending' as const,
+            };
+        });
+        setGenerationProgress(initialProgress);
         setAppState(AppState.GENERATING);
 
+        const handlePhotoGenerated = (photo: GeneratedPhoto) => {
+            const endTime = performance.now();
+            const startTime = generationStartTimes.current.get(photo.id) || endTime;
+            const duration = (endTime - startTime) / 1000;
+
+            setGenerationProgress(prevProgress =>
+                prevProgress.map(p =>
+                    p.id === photo.id
+                        ? { ...p, status: photo.imageUrl ? 'done' : 'error', time: duration }
+                        : p
+                )
+            );
+        };
+
         try {
-            const photos = await generateProfessionalPhotos(originalPhoto.url, originalPhoto.file.type);
+            const photos = await generateProfessionalPhotos(originalPhoto.url, originalPhoto.file.type, handlePhotoGenerated);
             setGeneratedPhotos(photos);
-            setAppState(AppState.RESULTS);
+            setTimeout(() => {
+                 setAppState(AppState.RESULTS);
+            }, 1200);
         } catch (err) {
             console.error("Failed to generate photos", err);
             setError(err instanceof Error ? err.message : "Ocorreu um erro desconhecido. Por favor, tente novamente.");
             setAppState(AppState.UPLOAD);
         }
     }, [originalPhoto]);
+    
+    const handleRevealPhoto = (id: number) => {
+        setRevealedPhotos(prev => {
+            const newSet = new Set(prev);
+            newSet.add(id);
+            return newSet;
+        });
+    };
 
     const handleDownload = (imageUrl: string, title: string) => {
         const link = document.createElement('a');
@@ -125,40 +205,91 @@ export default function App() {
         switch (appState) {
             case AppState.GENERATING:
                 return (
-                    <div className="text-center flex flex-col items-center justify-center p-8">
-                        <div className="psy-loader mb-8">
-                            <div className="inner one"></div>
-                            <div className="inner two"></div>
-                            <div className="inner three"></div>
-                        </div>
-                        <h2 className="text-3xl font-bold text-cyan-300 mb-2 animate-pulse">Gerando suas fotos...</h2>
-                        <p className="text-lg text-fuchsia-300">A IA está ajustando iluminação, fundo e seu melhor ângulo. Isso pode levar um momento.</p>
-                    </div>
+                    <div className="w-full max-w-2xl mx-auto">
+                       <CardWrapper>
+                          <div className="text-center flex flex-col items-center justify-center p-4 md:p-6">
+                            <div className="psy-loader mb-6">
+                              <div className="inner one"></div>
+                              <div className="inner two"></div>
+                              <div className="inner three"></div>
+                            </div>
+                            <h2 className="text-3xl font-bold text-cyan-300 mb-2">Gerando suas fotos...</h2>
+                            <p className="text-lg text-fuchsia-300 mb-8">Aguarde enquanto a IA cria cada estilo.</p>
+                            
+                            <div className="w-full space-y-3 text-left">
+                              {generationProgress.map(p => (
+                                <div key={p.id} className="flex items-center justify-between bg-black/40 p-3 rounded-lg border border-white/10 transition-all duration-500">
+                                  <span className="text-lg font-medium text-white tracking-wide">{p.title}</span>
+                                  <div className="flex items-center gap-3 text-lg">
+                                    <span className={`font-mono font-bold w-16 text-right ${
+                                        p.status === 'done' ? 'text-lime-400' :
+                                        p.status === 'error' ? 'text-red-400' : 'text-cyan-300'
+                                    }`}>
+                                        {p.status === 'error' ? 'Erro' : (p.time !== undefined ? `${p.time.toFixed(1)}s` : '...')}
+                                    </span>
+                                    <div className="w-6 h-6 flex items-center justify-center">
+                                        {p.status === 'pending' && <div className="simple-spinner" role="status" aria-label="gerando"></div>}
+                                        {p.status === 'done' && <span className="text-2xl text-lime-400">✓</span>}
+                                        {p.status === 'error' && <span className="text-2xl text-red-400">✗</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                       </CardWrapper>
+                   </div>
                 );
 
             case AppState.RESULTS:
                 return (
                      <div className="w-full max-w-7xl mx-auto">
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 md:gap-8 mb-8">
-                            {generatedPhotos.map(photo => (
-                                <div key={photo.id} className="glow-border rounded-2xl p-0.5">
-                                    <div className="bg-black/60 backdrop-blur-lg rounded-xl p-4 flex flex-col items-center text-center h-full">
-                                        <h3 className="text-2xl font-bold text-lime-300 mb-3">{photo.title}</h3>
-                                        {photo.imageUrl ? (
-                                            <img src={photo.imageUrl} alt={`Generated headshot - ${photo.title}`} className="w-full aspect-square object-cover rounded-lg mb-4 border-2 border-fuchsia-500/50"/>
-                                        ) : (
-                                            <div className="w-full aspect-square bg-gray-900 border-2 border-red-500/50 rounded-lg mb-4 flex items-center justify-center text-red-400">Falha ao gerar</div>
-                                        )}
-                                        <button
-                                            onClick={() => photo.imageUrl && handleDownload(photo.imageUrl, photo.title)}
-                                            disabled={!photo.imageUrl}
-                                            className="w-full mt-auto flex items-center justify-center px-4 py-2 bg-cyan-500 text-black font-bold text-lg rounded-full transition-all transform hover:scale-105 hover:shadow-lg hover:shadow-cyan-500/50 disabled:bg-gray-700 disabled:shadow-none disabled:cursor-not-allowed">
-                                            <DownloadIcon className="w-5 h-5 mr-2"/>
-                                            Baixar
-                                        </button>
+                            {generatedPhotos.map(photo => {
+                                const isRevealed = revealedPhotos.has(photo.id);
+                                return (
+                                    <div key={photo.id} className="glow-border rounded-2xl p-0.5">
+                                        <div className="bg-black/60 backdrop-blur-lg rounded-xl p-4 flex flex-col items-center text-center h-full">
+                                            <h3 className="text-2xl font-bold text-lime-300 mb-3">{photo.title}</h3>
+                                            
+                                            <div className="relative w-full mb-4">
+                                                {photo.imageUrl ? (
+                                                    <>
+                                                        <img 
+                                                            src={photo.imageUrl} 
+                                                            alt={`Generated headshot - ${photo.title}`}
+                                                            className={`w-full aspect-auto rounded-lg border-2 border-fuchsia-500/50 transition-all duration-700 ease-in-out ${isRevealed ? 'opacity-100 scale-100 blur-0' : 'opacity-40 scale-95 blur-md'}`}
+                                                        />
+                                                        {!isRevealed && (
+                                                            <div 
+                                                                onClick={() => handleRevealPhoto(photo.id)}
+                                                                className="absolute inset-0 rounded-lg flex flex-col items-center justify-center cursor-pointer group bg-black/40"
+                                                                aria-label={`Revelar foto ${photo.title}`}
+                                                                role="button"
+                                                            >
+                                                                <div className="text-center p-4 rounded-full bg-black/60 backdrop-blur-sm transition-transform duration-300 group-hover:scale-105">
+                                                                    <SparklesIcon className="w-10 h-10 text-cyan-300 mx-auto" />
+                                                                    <p className="mt-2 text-sm font-bold text-white tracking-wider">REVELAR</p>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                ) : (
+                                                    <div className="w-full aspect-square bg-gray-900 border-2 border-red-500/50 rounded-lg flex items-center justify-center text-red-400">Falha ao gerar</div>
+                                                )}
+                                            </div>
+
+                                            <button
+                                                onClick={() => photo.imageUrl && handleDownload(photo.imageUrl, photo.title)}
+                                                disabled={!photo.imageUrl}
+                                                className="w-full mt-auto flex items-center justify-center px-4 py-2 bg-cyan-500 text-black font-bold text-lg rounded-full transition-all transform hover:scale-105 hover:shadow-lg hover:shadow-cyan-500/50 disabled:bg-gray-700 disabled:shadow-none disabled:cursor-not-allowed">
+                                                <DownloadIcon className="w-5 h-5 mr-2"/>
+                                                Baixar
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                         <div className="flex justify-center">
                              <button onClick={resetApp} 

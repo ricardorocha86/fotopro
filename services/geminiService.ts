@@ -62,7 +62,8 @@ const generateSinglePhoto = async (
 
 export const generateProfessionalPhotos = async (
     imageDataUrl: string,
-    mimeType: string
+    mimeType: string,
+    onPhotoGenerated: (photo: GeneratedPhoto) => void
 ): Promise<GeneratedPhoto[]> => {
     const aiInstance = getAI();
     const base64Image = getBase64Data(imageDataUrl);
@@ -71,8 +72,14 @@ export const generateProfessionalPhotos = async (
         throw new Error("Falha ao processar a imagem. Verifique o formato do arquivo.");
     }
 
+    const generateAndReport = async (promptData: typeof PROFESSIONAL_PROMPTS[0]): Promise<GeneratedPhoto> => {
+        const result = await generateSinglePhoto(aiInstance, base64Image, mimeType, promptData);
+        onPhotoGenerated(result);
+        return result;
+    };
+
     const generationPromises = PROFESSIONAL_PROMPTS.map(promptData =>
-        generateSinglePhoto(aiInstance, base64Image, mimeType, promptData)
+        generateAndReport(promptData)
     );
 
     try {

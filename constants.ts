@@ -6,13 +6,13 @@ export const PROFESSIONAL_PROMPTS = [
   },
   { 
     id: 2, 
-    title: "Casual Criativo", 
-    prompt: "A modern, approachable headshot of this person. They should be wearing a smart casual outfit, like a high-quality knit sweater. The background is a textured, neutral-colored wall (like slate grey or beige). The lighting is soft and natural, creating a warm and trustworthy feel. Photorealistic." 
+    title: "Tech Startup", 
+    prompt: "A dynamic and modern headshot of this person, suitable for a tech startup profile. They should be wearing a stylish, dark t-shirt or polo shirt. The background is a creative, brightly lit office space with elements like whiteboards or glass walls, subtly blurred. The expression is energetic and forward-thinking. Photorealistic, sharp focus." 
   },
   { 
     id: 3, 
-    title: "Externo", 
-    prompt: "An outdoor professional portrait of this person. The setting is a bright, slightly out-of-focus urban park or modern architectural background. The person has a genuine smile, and the photo is taken during the 'golden hour' for warm, flattering light. Looks like a professional photoshoot." 
+    title: "Especialista / Autor", 
+    prompt: "A thoughtful and professional portrait of this person, conveying expertise. They are set against a background of a well-lit, minimalist study or library with bookshelves. The lighting is soft and focused, creating a distinguished and intellectual mood. The person has a calm, knowledgeable expression. Ultra-realistic, detailed." 
   },
   { 
     id: 4, 

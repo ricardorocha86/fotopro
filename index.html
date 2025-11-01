@@ -96,6 +96,16 @@
         0% { transform: rotateX(35deg) rotateY(55deg) rotateZ(0deg); }
         100% { transform: rotateX(35deg) rotateY(55deg) rotateZ(360deg); }
       }
+
+      .simple-spinner {
+        width: 24px;
+        height: 24px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-radius: 50%;
+        border-top-color: #00ffc8;
+        animation: spin 1s ease-in-out infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
     </style>
   <script type="importmap">
 {
