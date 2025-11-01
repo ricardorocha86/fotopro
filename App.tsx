@@ -1,94 +1,76 @@
-import React, { useState, useCallback, ChangeEvent } from 'react';
-import { AppState, GeneratedPhoto } from './types';
-import { PROFESSIONAL_PROMPTS } from './constants';
-import { generateImage } from './services/geminiService';
-import { fileToDataUrl } from './utils/imageUtils';
+import React, { useState, useCallback } from 'react';
+import { generateStory } from './services/geminiService';
+
+// --- App State Enum ---
+enum AppState {
+  INPUT,
+  GENERATING,
+  RESULTS,
+}
 
 // --- Helper Icons ---
-const UploadIcon: React.FC<{ className?: string }> = ({ className }) => (
+const SparklesIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg className={className} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456Z" />
     </svg>
 );
 
-const DownloadIcon: React.FC<{ className?: string }> = ({ className }) => (
+const ClipboardIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg className={className} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a2.25 2.25 0 0 1-2.25 2.25H9A2.25 2.25 0 0 1 6.75 5.25v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5A2.25 2.25 0 0 1 16.5 21.75H7.5A2.25 2.25 0 0 1 5.25 19.5V7.221c0-1.108.806-2.057 1.907-2.185A48.208 48.208 0 0 1 12 4.5c.673 0 1.342.026 2.003.075M10.5 14.25h3M10.5 11.25h.008v.008H10.5v-.008Z" />
     </svg>
 );
+
 
 // --- Main App Component ---
 export default function App() {
-    const [appState, setAppState] = useState<AppState>(AppState.UPLOAD);
-    const [selfie, setSelfie] = useState<string | null>(null);
-    const [generatedPhotos, setGeneratedPhotos] = useState<GeneratedPhoto[]>([]);
+    const [appState, setAppState] = useState<AppState>(AppState.INPUT);
+    const [storyIdea, setStoryIdea] = useState<string>('');
+    const [generatedStory, setGeneratedStory] = useState<string>('');
     const [error, setError] = useState<string | null>(null);
+    const [isCopied, setIsCopied] = useState<boolean>(false);
 
     const resetApp = () => {
-        setAppState(AppState.UPLOAD);
-        setSelfie(null);
-        setGeneratedPhotos([]);
+        setAppState(AppState.INPUT);
+        setStoryIdea('');
+        setGeneratedStory('');
         setError(null);
-    };
-
-    const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file) {
-            if (file.size > 4 * 1024 * 1024) { // 4MB limit
-                setError("O arquivo é muito grande. Por favor, escolha uma imagem com menos de 4MB.");
-                return;
-            }
-            try {
-                setError(null);
-                const dataUrl = await fileToDataUrl(file);
-                setSelfie(dataUrl);
-            } catch (err) {
-                console.error("Error reading file:", err);
-                setError("Não foi possível ler o arquivo de imagem.");
-            }
-        }
+        setIsCopied(false);
     };
 
     const handleGenerateClick = useCallback(async () => {
-        if (!selfie) return;
+        if (!storyIdea.trim()) {
+            setError("Por favor, escreva sua ideia para a história.");
+            return;
+        }
 
+        setError(null);
         setAppState(AppState.GENERATING);
-        setGeneratedPhotos(PROFESSIONAL_PROMPTS.map(p => ({ ...p, imageUrl: null })));
 
         try {
-            const promises = PROFESSIONAL_PROMPTS.map(p => generateImage(p.prompt, selfie));
-            const results = await Promise.all(promises);
-
-            const finalPhotos: GeneratedPhoto[] = results.map((imageUrl, index) => ({
-                ...PROFESSIONAL_PROMPTS[index],
-                imageUrl
-            }));
-            
-            setGeneratedPhotos(finalPhotos);
+            const story = await generateStory(storyIdea);
+            setGeneratedStory(story);
             setAppState(AppState.RESULTS);
-
         } catch (err) {
-            console.error("Failed to generate photos", err);
-            setError("Ocorreu um erro ao gerar as fotos. Por favor, tente novamente.");
-            setAppState(AppState.UPLOAD);
+            console.error("Failed to generate story", err);
+            setError(err instanceof Error ? err.message : "Ocorreu um erro desconhecido. Por favor, tente novamente.");
+            setAppState(AppState.INPUT);
         }
-    }, [selfie]);
+    }, [storyIdea]);
     
-    const handleDownload = (imageUrl: string, title: string) => {
-        const link = document.createElement('a');
-        link.href = imageUrl;
-        link.download = `foto_profissional_${title.toLowerCase().replace(' ', '_')}.png`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    const handleCopyToClipboard = () => {
+        navigator.clipboard.writeText(generatedStory).then(() => {
+            setIsCopied(true);
+            setTimeout(() => setIsCopied(false), 2000); // Reset after 2 seconds
+        });
     };
-
+    
     const renderHeader = () => (
         <header className="text-center mb-8 md:mb-12">
-            <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-teal-300">
-                Gerador de Fotos Profissionais
+            <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-500 to-pink-500">
+                Gerador de Histórias Românticas
             </h1>
-            <p className="text-gray-300 mt-2 max-w-2xl mx-auto">Transforme sua selfie em fotos de perfil impressionantes para LinkedIn, sites e mais.</p>
+            <p className="text-gray-300 mt-2 max-w-2xl mx-auto">Dê vida às suas fantasias. Escreva uma ideia e deixe a IA criar uma história de amor para você.</p>
         </header>
     );
 
@@ -96,93 +78,59 @@ export default function App() {
         switch (appState) {
             case AppState.GENERATING:
                 return (
-                    <div className="text-center">
-                        <h2 className="text-2xl font-bold text-teal-300 mb-4">Gerando suas fotos...</h2>
-                        <p className="text-lg text-gray-300 mb-8">Aguarde um momento. A IA está criando seus retratos profissionais.</p>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8 max-w-4xl mx-auto">
-                            {PROFESSIONAL_PROMPTS.map((p) => (
-                                <div key={p.id} className="aspect-[3/4] bg-gray-800 rounded-lg animate-pulse flex flex-col items-center justify-center">
-                                    <div className="loader border-t-4 border-b-4 border-teal-300 rounded-full w-12 h-12 animate-spin"></div>
-                                    <p className="text-sm mt-4 text-gray-400">{p.title}</p>
-                                </div>
-                            ))}
-                        </div>
+                    <div className="text-center flex flex-col items-center justify-center p-8">
+                        <div className="loader border-t-4 border-b-4 border-pink-400 rounded-full w-16 h-16 animate-spin mb-6"></div>
+                        <h2 className="text-2xl font-bold text-pink-300 mb-2">Criando sua história...</h2>
+                        <p className="text-lg text-gray-300">Aguarde um momento. A IA está tecendo os fios do romance.</p>
                     </div>
                 );
 
             case AppState.RESULTS:
                 return (
-                     <div className="text-center">
-                        <h2 className="text-3xl font-bold mb-2 text-teal-300">Suas fotos estão prontas!</h2>
-                        <p className="text-lg text-gray-200 mb-8">Baixe suas favoritas ou comece de novo com outra selfie.</p>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 max-w-5xl mx-auto mb-8">
-                            {generatedPhotos.map(photo => (
-                                <div key={photo.id} className="group relative aspect-[3/4] bg-gray-800 rounded-lg overflow-hidden shadow-lg">
-                                    {photo.imageUrl ? (
-                                        <>
-                                            <img src={photo.imageUrl} alt={photo.title} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center p-2">
-                                                <h3 className="font-bold text-lg text-white text-center mb-4">{photo.title}</h3>
-                                                <button onClick={() => handleDownload(photo.imageUrl!, photo.title)} className="flex items-center justify-center px-4 py-2 bg-teal-500 text-white font-semibold rounded-full shadow-md hover:bg-teal-600 transition-colors">
-                                                    <DownloadIcon className="w-5 h-5 mr-2"/>
-                                                    Baixar
-                                                </button>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center">
-                                            <p className="text-red-400">Falha</p>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
+                     <div className="w-full max-w-4xl mx-auto">
+                        <div className="bg-gray-800/50 p-6 md:p-8 rounded-2xl shadow-2xl mb-8">
+                            <p className="text-lg text-gray-200 leading-relaxed whitespace-pre-wrap">
+                                {generatedStory}
+                            </p>
                         </div>
-                        <button onClick={resetApp} className="px-10 py-4 bg-gradient-to-r from-blue-500 to-teal-500 text-white font-bold rounded-full shadow-lg hover:from-blue-600 hover:to-teal-600 transition-all transform hover:scale-105 text-lg">
-                            Gerar Novas Fotos
-                        </button>
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                             <button onClick={handleCopyToClipboard} className="flex items-center justify-center w-full sm:w-auto px-6 py-3 bg-gray-600 text-white font-semibold rounded-full hover:bg-gray-700 transition-colors">
+                                <ClipboardIcon className="w-5 h-5 mr-2"/>
+                                {isCopied ? 'Copiado!' : 'Copiar Texto'}
+                            </button>
+                            <button onClick={resetApp} className="w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-fuchsia-600 to-pink-600 text-white font-bold rounded-full shadow-lg hover:from-fuchsia-700 hover:to-pink-700 transition-all transform hover:scale-105">
+                                Escrever Outra História
+                            </button>
+                        </div>
                     </div>
                 );
 
-            case AppState.UPLOAD:
+            case AppState.INPUT:
             default:
                 return (
-                    <div className="max-w-2xl mx-auto bg-gray-800/50 p-6 md:p-8 rounded-2xl shadow-2xl flex flex-col items-center">
-                        {selfie ? (
-                             <div className="w-full flex flex-col items-center">
-                                 <h3 className="text-xl font-semibold mb-4 text-center">Sua selfie está pronta!</h3>
-                                 <div className="w-64 h-64 md:w-80 md:h-80 rounded-lg overflow-hidden mb-6 shadow-lg">
-                                     <img src={selfie} alt="Preview da selfie" className="w-full h-full object-cover" />
-                                 </div>
-                                 <div className="flex flex-col sm:flex-row gap-4">
-                                     <label className="cursor-pointer px-6 py-3 bg-gray-600 text-white font-semibold rounded-full hover:bg-gray-700 transition-colors">
-                                         Trocar Foto
-                                         <input type="file" accept="image/png, image/jpeg" className="hidden" onChange={handleFileChange} />
-                                     </label>
-                                     <button onClick={handleGenerateClick} className="px-8 py-3 bg-gradient-to-r from-blue-500 to-teal-500 text-white font-bold rounded-full shadow-lg hover:from-blue-600 hover:to-teal-600 transition-all transform hover:scale-105">
-                                         Gerar Fotos Profissionais
-                                     </button>
-                                 </div>
-                             </div>
-                        ) : (
-                            <div className="w-full flex flex-col items-center text-center">
-                                <label htmlFor="file-upload" className="w-full cursor-pointer border-4 border-dashed border-gray-600 hover:border-teal-400 transition-colors rounded-xl p-8 md:p-12 flex flex-col items-center justify-center">
-                                    <UploadIcon className="w-16 h-16 text-gray-500 mb-4" />
-                                    <span className="text-xl font-semibold text-gray-200">Clique para carregar sua selfie</span>
-                                    <p className="text-gray-400 mt-2">PNG ou JPG (máx 4MB)</p>
-                                </label>
-                                <input id="file-upload" type="file" accept="image/png, image/jpeg" className="hidden" onChange={handleFileChange} />
-                            </div>
-                        )}
-                        {error && <p className="mt-4 text-red-400 bg-red-900/50 px-4 py-2 rounded-md">{error}</p>}
+                    <div className="max-w-2xl mx-auto bg-gray-800/50 p-6 md:p-8 rounded-2xl shadow-2xl flex flex-col items-center gap-6">
+                        <h2 className="text-2xl font-semibold text-center text-gray-100">Qual é a sua ideia?</h2>
+                        <textarea
+                            value={storyIdea}
+                            onChange={(e) => setStoryIdea(e.target.value)}
+                            placeholder="Ex: Um encontro inesperado entre uma astrônoma e um músico de jazz em um observatório abandonado..."
+                            className="w-full h-40 p-4 bg-gray-900/70 border-2 border-gray-700 rounded-lg text-lg text-gray-200 focus:ring-2 focus:ring-pink-500 focus:border-pink-500 transition-colors resize-none"
+                            aria-label="Ideia para a história"
+                        />
+                        <button onClick={handleGenerateClick} className="w-full sm:w-auto flex items-center justify-center px-10 py-4 bg-gradient-to-r from-fuchsia-600 to-pink-600 text-white font-bold rounded-full shadow-lg hover:from-fuchsia-700 hover:to-pink-700 transition-all transform hover:scale-105 text-lg">
+                            <SparklesIcon className="w-6 h-6 mr-2" />
+                            Gerar História
+                        </button>
+                        {error && <p className="mt-2 text-red-400 bg-red-900/50 px-4 py-2 rounded-md">{error}</p>}
                     </div>
                 );
         }
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-b from-gray-900 to-blue-900/50 p-4 sm:p-6 md:p-8 flex flex-col justify-center">
+        <div className="min-h-screen bg-gradient-to-b from-gray-900 to-fuchsia-900/50 p-4 sm:p-6 md:p-8 flex flex-col justify-center items-center">
             {renderHeader()}
-            <main>
+            <main className="w-full flex justify-center">
                 {renderContent()}
             </main>
         </div>

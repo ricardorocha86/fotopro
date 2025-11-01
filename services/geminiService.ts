@@ -1,5 +1,4 @@
-import { GoogleGenAI, Modality } from "@google/genai";
-import { getBase64Data } from '../utils/imageUtils';
+import { GoogleGenAI } from "@google/genai";
 
 let ai: GoogleGenAI | null = null;
 
@@ -13,45 +12,26 @@ const getAI = () => {
     return ai;
 }
 
-export const generateImage = async (prompt: string, selfieDataUrl: string): Promise<string> => {
-    const aiInstance = getAI();
-    const selfieBase64 = getBase64Data(selfieDataUrl);
+const SYSTEM_INSTRUCTION = "Você é um escritor talentoso de contos românticos para adultos. Suas histórias são apaixonadas, detalhadas e evocativas, com personagens bem desenvolvidos e cenários vívidos. Evite clichês e crie narrativas únicas e cativantes. A história deve ser bem estruturada, com começo, meio e fim. O tom deve ser sensual e romântico, mas de bom gosto.";
 
-    if (!selfieBase64) {
-        throw new Error("Failed to extract Base64 data from selfie.");
-    }
+export const generateStory = async (userPrompt: string): Promise<string> => {
+    const aiInstance = getAI();
 
     try {
         const response = await aiInstance.models.generateContent({
-            model: 'gemini-2.5-flash-image',
-            contents: {
-                parts: [
-                    {
-                        inlineData: {
-                            data: selfieBase64,
-                            mimeType: 'image/jpeg',
-                        },
-                    },
-                    {
-                        text: prompt,
-                    },
-                ],
-            },
+            model: 'gemini-2.5-flash',
+            contents: userPrompt,
             config: {
-                responseModalities: [Modality.IMAGE],
+                systemInstruction: SYSTEM_INSTRUCTION,
+                temperature: 0.8,
+                topP: 0.95,
             },
         });
 
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-                const base64ImageBytes: string = part.inlineData.data;
-                return `data:image/png;base64,${base64ImageBytes}`;
-            }
-        }
-        throw new Error("No image data found in API response.");
+        return response.text;
 
     } catch (error) {
-        console.error("Error generating image with Gemini:", error);
-        throw error;
+        console.error("Error generating story with Gemini:", error);
+        throw new Error("Falha ao gerar a história. A resposta da IA pode estar bloqueada ou ocorreu um erro de rede.");
     }
 };
