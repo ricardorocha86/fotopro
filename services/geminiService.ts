@@ -1,4 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
+import { PROFESSIONAL_PROMPTS } from '../constants';
+import { GeneratedPhoto } from '../types';
+import { getBase64Data } from '../utils/imageUtils';
 
 let ai: GoogleGenAI | null = null;
 
@@ -12,26 +15,71 @@ const getAI = () => {
     return ai;
 }
 
-const SYSTEM_INSTRUCTION = "Você é um escritor talentoso de contos românticos para adultos. Suas histórias são apaixonadas, detalhadas e evocativas, com personagens bem desenvolvidos e cenários vívidos. Evite clichês e crie narrativas únicas e cativantes. A história deve ser bem estruturada, com começo, meio e fim. O tom deve ser sensual e romântico, mas de bom gosto.";
-
-export const generateStory = async (userPrompt: string): Promise<string> => {
-    const aiInstance = getAI();
-
+const generateSinglePhoto = async (
+    aiInstance: GoogleGenAI,
+    base64Image: string,
+    mimeType: string,
+    promptData: { id: number; title: string; prompt: string }
+): Promise<GeneratedPhoto> => {
     try {
         const response = await aiInstance.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: userPrompt,
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [
+                    { inlineData: { data: base64Image, mimeType: mimeType } },
+                    { text: promptData.prompt },
+                ],
+            },
             config: {
-                systemInstruction: SYSTEM_INSTRUCTION,
-                temperature: 0.8,
-                topP: 0.95,
+                responseModalities: [Modality.IMAGE],
             },
         });
 
-        return response.text;
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+                const base64Bytes = part.inlineData.data;
+                const imageUrl = `data:${part.inlineData.mimeType};base64,${base64Bytes}`;
+                return {
+                    id: promptData.id,
+                    prompt: promptData.prompt,
+                    title: promptData.title,
+                    imageUrl: imageUrl,
+                };
+            }
+        }
+        throw new Error("Nenhuma imagem foi gerada para o estilo: " + promptData.title);
 
     } catch (error) {
-        console.error("Error generating story with Gemini:", error);
-        throw new Error("Falha ao gerar a história. A resposta da IA pode estar bloqueada ou ocorreu um erro de rede.");
+        console.error(`Error generating photo for prompt "${promptData.title}":`, error);
+        return {
+            id: promptData.id,
+            prompt: promptData.prompt,
+            title: promptData.title,
+            imageUrl: null, // Indicate failure
+        };
+    }
+};
+
+export const generateProfessionalPhotos = async (
+    imageDataUrl: string,
+    mimeType: string
+): Promise<GeneratedPhoto[]> => {
+    const aiInstance = getAI();
+    const base64Image = getBase64Data(imageDataUrl);
+
+    if (!base64Image) {
+        throw new Error("Falha ao processar a imagem. Verifique o formato do arquivo.");
+    }
+
+    const generationPromises = PROFESSIONAL_PROMPTS.map(promptData =>
+        generateSinglePhoto(aiInstance, base64Image, mimeType, promptData)
+    );
+
+    try {
+        const results = await Promise.all(generationPromises);
+        return results;
+    } catch (error) {
+        console.error("Error generating professional photos:", error);
+        throw new Error("Falha ao gerar as fotos. Verifique o console para mais detalhes.");
     }
 };
